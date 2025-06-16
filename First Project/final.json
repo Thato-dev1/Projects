@@ -1,0 +1,659 @@
+/*This is a project that shows my ability to connect resources in two or more separate Virtual Networks. These resources may be
+Virtual Machines, Starage Accounts, Azure SQL databases and so many more. To be precise, the project below connects three
+Virtual Machines, with one of them being in a different location. The Sandbox virtual machine sends and recieves network traffic,
+through the HTTP protocol, from the internet and shares it with the work(same virtual network) and workload(different virtaul network)
+virtual machines. It shares this network traffic with the other virtual machines through the SSH protocol.*/
+
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "Vnet01_Name": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the first virtual network with a defaultValue of SandboxVnet"
+            },
+            "defaultValue": "SandboxVnet"
+        },
+        "Vnet02_Name": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the second virtual network with a defaultValue of WorkLoadVnet"
+            },
+            "defaultValue": "WorkLoadVnet"
+        },
+        "Subnet01_Name": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the first subnet in the first virtual network with a defaultValue of SandboxSubnet"
+            },
+            "defaultValue": "SandboxSubnet"
+        },
+        "Subnet02_Name": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the second subnet in the first virtual network with a defaultValue of WorkSubnet"
+            },
+            "defaultValue": "WorkSubnet"
+        },
+        "Subnet03_Name": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the first subnet in the second virtual network with a defaultValue of WorkLoadSubnet"
+            },
+            "defaultValue": "WorkLoadSubnet"
+        },
+        "NSG01_Name": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the first network security group with a defaultValue of SandboxNSG"
+            },
+            "defaultValue": "SandboxNSG"
+        },
+        "NSG02_Name": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the second network security group with a defaultValue of WorkNSG"
+            },
+            "defaultValue": "WorkNSG"
+        },
+        "NSG03_Name": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the third network security group with a defaultValue of WorkLoadNSG"
+            },
+            "defaultValue": "WorkLoadNSG"
+        },
+        "Vnet01_Location": {
+            "type": "string",
+            "metadata": {
+                "description": "Location for the first virtual network. Default is East US."
+            },
+            "defaultValue": "East US"
+        },
+        "Vnet02_Location": {
+            "type": "string",
+            "metadata": {
+                "description": "Location for the second virtual network. Default is West US."
+            },
+            "defaultValue": "West US"
+        },
+        "VM01_Name": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the first virtual machine with a defaultValue of SandboxVM"
+            },
+            "defaultValue": "SandboxVM"
+        },
+        "VM02_Name": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the second virtual machine with a defaultValue of WorkVM"
+            },
+            "defaultValue": "WorkVM"
+        },
+        "adminUsername": {
+            "type": "string",
+            "minLength":1,
+            "metadata": {
+                "description": "Username for the first virtual machine. Default is 'adminUser'."
+            }
+        },
+        "Username": {
+            "type": "string",
+            "minLength":1,
+            "metadata": {
+                "description": "Username for the second and third virtual machines."
+            }
+        },
+        "Password": {
+            "type": "string",
+            "minLength": 6,
+            "metadata": {
+                "description": "Password for the second and third virtual machines. Must be at least 6 characters long."
+            }
+        },
+        "VM03_Name": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the third virtual machine with a defaultValue of WorkLoadVM"
+            },
+            "defaultValue": "WorkLoadVM"
+        }
+    },
+    "functions": [],
+    "variables": {
+        "Vnet01_IPAddress": "192.168.0.0/16",
+        "Vnet02_IPAddress": "10.0.0.0/16",
+        "Subnet01_IPAddress": "192.168.0.32/28",
+        "Subnet02_IPAddress": "192.168.0.16/28",
+        "Subnet03_IPAddress": "10.0.0.16/28",
+        "PublicIPAddress_Name": "SandboxPublicIPAddress",
+        "NIC01_Name": "SandboxNIC",
+        "NIC02_Name": "WorkNIC",
+        "NIC03_Name": "WorkLoadNIC",
+        "ComputerName": "Sandbox",
+        "ComputerName02": "Work",
+        "ComputerName03": "workload"
+        
+    },
+    "resources": [
+
+        {
+            "name": "[parameters('Vnet01_Name')]",
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2024-03-01",
+            "location": "[parameters('Vnet01_Location')]",
+            "tags": {
+                "displayName": "[parameters('Vnet01_Name')]"
+            },
+           "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('NSG01_Name'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('NSG02_Name'))]"
+            ],
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[variables('Vnet01_IPAddress')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[parameters('Subnet01_Name')]",
+                        "properties": {
+                            "addressPrefix": "[variables('Subnet01_IPAddress')]",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('NSG01_Name'))]"
+                            }
+                        }
+                    },
+                    {
+                        "name": "[parameters('Subnet02_Name')]",
+                        "properties": {
+                            "addressPrefix": "[variables('Subnet02_IPAddress')]",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('NSG02_Name'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[parameters('Vnet02_Name')]",
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2024-03-01",
+            "location": "[parameters('Vnet02_Location')]",
+            "tags": {
+                "displayName": "[parameters('Vnet02_Name')]"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('NSG03_Name'))]"
+            ],
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[variables('Vnet02_IPAddress')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[parameters('Subnet03_Name')]",
+                        "properties": {
+                            "addressPrefix": "[variables('Subnet03_IPAddress')]",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('NSG03_Name'))]"
+                            }
+                        }
+                    }
+                    
+                ]
+            }
+        },
+        {
+            "name": "[parameters('NSG01_Name')]",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2024-03-01",
+            "location": "[parameters('Vnet01_Location')]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "Allow_HTTP_Traffic_From_Internet",
+                        "properties": {
+                            "description": "Allow HTTP traffic to the first subnet from the internet",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "80",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "Allow_SSH_From_Work_Subnet",
+                        "properties": {
+                            "description": "Allow traffic from the Work subnet to the Sandbox subnet",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "sourceAddressPrefix": "[variables('Subnet02_IPAddress')]",
+                            "destinationAddressPrefix": "[variables('Subnet01_IPAddress')]",
+                            "access": "Allow",
+                            "priority": 110,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "Allow_SSH_From_Workload_Subnet",
+                        "properties": {
+                            "description": "Allow traffic from the workload(Vnet02) subnet to the Sandbox subnet",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "sourceAddressPrefix": "[variables('Subnet03_IPAddress')]",
+                            "destinationAddressPrefix": "[variables('Subnet01_IPAddress')]",
+                            "access": "Allow",
+                            "priority": 130,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "Send_HTTP_Traffic_To_Internet",
+                        "properties": {
+                            "description": "Send HTTP traffic from the Sandbox virtaul machine to the internet",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "80",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Outbound"
+                        }
+                    },
+                    {
+                        "name": "Send_SSH_Traffic_To_Work_Subnet",
+                        "properties": {
+                            "description": "Send SSH traffic from the Sandbox subnet to the work subnet",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "sourceAddressPrefix": "[variables('Subnet01_IPAddress')]",
+                            "destinationAddressPrefix": "[variables('Subnet02_IPAddress')]",
+                            "access": "Allow",
+                            "priority": 110,
+                            "direction": "Outbound"
+                        }
+                    },
+                    {
+                        "name": "Send_SSH_Traffic_To_Workload_Subnet",
+                        "properties": {
+                            "description": "Send SSH traffic from the Sandbox subnet to the workload subnet",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "sourceAddressPrefix": "[variables('Subnet01_IPAddress')]",
+                            "destinationAddressPrefix": "[variables('Subnet03_IPAddress')]",
+                            "access": "Allow",
+                            "priority": 120,
+                            "direction": "Outbound"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[parameters('NSG02_Name')]",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2024-03-01",
+            "location": "[parameters('Vnet01_Location')]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "Allow_SSH_Traffic_From_Sandbox_Subnet",
+                        "properties": {
+                            "description": "Allow SSH traffic from the first subnet to the second subnet",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "sourceAddressPrefix": "[variables('Subnet01_IPAddress')]",
+                            "destinationAddressPrefix": "[variables('Subnet02_IPAddress')]",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "Send_SSH_Traffic_To_Sandbox_Subnet",
+                        "properties": {
+                            "description": "Send SSH traffic from the second subnet to the first subnet",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "sourceAddressPrefix": "[variables('Subnet02_IPAddress')]",
+                            "destinationAddressPrefix": "[variables('Subnet01_IPAddress')]",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Outbound"
+                        }
+                    }
+                   
+                ]
+            }
+        },
+        {
+            "name": "[parameters('NSG03_Name')]",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2024-03-01",
+            "location": "[parameters('Vnet02_Location')]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "Allow_SSH_Traffic_From_Sandbox_Subnet",
+                        "properties": {
+                            "description": "Allow SSH traffic from the first subnet to the third subnet in the second virtual network",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "sourceAddressPrefix": "[variables('Subnet01_IPAddress')]",
+                            "destinationAddressPrefix": "[variables('Subnet03_IPAddress')]",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "Send_SSH_Traffic_To_Sandbox_Subnet",
+                        "properties": {
+                            "description": "Send SSH traffic from the third subnet to the first subnet in the first virtual network",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "sourceAddressPrefix": "[variables('Subnet03_IPAddress')]",
+                            "destinationAddressPrefix": "[variables('Subnet01_IPAddress')]",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Outbound"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "Vnet01/Vnet01ToVnet02Peering",
+            "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+            "apiVersion": "2024-05-01",
+            "location": "[parameters('Vnet01_Location')]",
+            "dependsOn": [
+
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('Vnet01_Name'))]"
+
+
+            ],
+            "properties": {
+                "allowVirtualNetworkAccess": true,
+                "allowForwardedTraffic": false,
+                "allowGatewayTransit": false,
+                "doNotVerifyRemoteGateways": false,
+                "remoteVirtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('Vnet02_Name'))]"
+                }
+            }
+            
+
+        },
+        {
+            "name":"Vnet02/Vnet02ToVnet01Peering",
+            "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+            "apiVersion": "2024-05-01",
+            "location":"[parameters('Vnet02_Location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('Vnet02_Name'))]"
+            ],
+            "properties": {
+                "allowVirtualNetworkAccess": true,
+                "allowForwardedTraffic": false,
+                "allowGatewayTransit": false,
+                "doNotVerifyRemoteGateways": false,
+                "remoteVirtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('Vnet01_Name'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2024-03-01",
+            "name": "[variables('PublicIPAddress_Name')]",
+            "location": "[parameters('Vnet01_Location')]",
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic"
+            },
+            "sku": {
+                "name": "Basic"
+            }
+        },
+        
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2024-03-01",
+            "name": "[variables('NIC01_Name')]",
+            "location": "[parameters('Vnet01_Location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('PublicIPAddress_Name'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('Vnet01_Name'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('NSG01_Name'))]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('PublicIPAddress_Name'))]"
+                            },
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('Vnet01_Name'), parameters('Subnet01_Name'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2024-07-01",
+            "name": "[parameters('VM01_Name')]",
+            "location": "[parameters('Vnet01_Location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', variables('NIC01_Name'))]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "Standard_A2_v2"
+                },
+                "osProfile": {
+                    "computerName": "[variables('ComputerName')]",
+                    "adminUsername": "[parameters('adminUsername')]",
+                    "adminPassword": "12345",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": true,
+                        "ssh": {
+                            "publicKeys": [
+                                {
+                                    "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
+                                    "keyData": "Allow"
+                                }
+                            ]
+                        }
+                    }
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "Canonical",
+                        "offer": "0001-com-ubuntu-server-jammy",
+                        "sku": "22_04-lts-gen2",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "createOption": "fromImage"
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('NIC01_Name'))]"
+                        }
+                    ]
+                }
+            }
+            
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2024-03-01",
+            "name": "[variables('NIC02_Name')]",
+            "location": "[parameters('Vnet01_Location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('Vnet01_Name'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('NSG02_Name'))]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('Vnet01_Name'), parameters('Subnet02_Name'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2024-07-01",
+            "name": "[parameters('VM02_Name')]",
+            "location": "[parameters('Vnet01_Location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', variables('NIC02_Name'))]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "Standard_A2_v2"
+                },
+                "osProfile": {
+                    "computerName": "[variables('ComputerName02')]",
+                    "adminUsername": "[parameters('Username')]",
+                    "adminPassword": "[parameters('Password')]",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": true,
+                        "ssh": {
+                            "publicKeys": [
+                                {
+                                    "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
+                                    "keyData": "Allow"
+                                }
+                            ]
+                        }
+                    }
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "Canonical",
+                        "offer": "0001-com-ubuntu-server-jammy",
+                        "sku": "22_04-lts-gen2",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "createOption": "fromImage"
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('NIC02_Name'))]"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2024-03-01",
+            "name": "[variables('NIC03_Name')]",
+            "location": "[parameters('Vnet02_Location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('Vnet02_Name'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('NSG03_Name'))]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",                            
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('VM02_Name'), parameters('Subnet03_Name'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2024-07-01",
+            "name": "[parameters('VM03_Name')]",
+            "location": "[parameters('Vnet02_Location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', variables('NIC03_Name'))]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "Standard_A2_v2"
+                },
+                "osProfile": {
+                    "computerName": "[variables('ComputerName03')]",
+                    "adminUsername": "[parameters('Username')]",
+                    "adminPassword": "[parameters('Password')]",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": true,
+                        "ssh": {
+                            "publicKeys": [
+                                {
+                                    "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
+                                    "keyData": "Allow"
+                                }
+                            ]
+                        }
+                    }
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "Canonical",
+                        "offer": "0001-com-ubuntu-server-jammy",
+                        "sku": "22_04-lts-gen2",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "createOption": "fromImage"
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('NIC03_Name'))]"
+                        }
+                    ]
+                }
+            }
+        }
+  
+    ],
+    "outputs": {}
+}
